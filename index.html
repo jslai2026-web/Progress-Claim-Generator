@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Deficiency List Report</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#1d2330;--mut:#667085;--bd:#d5d9e0;--ac:#1f5fbf;--ok:#1a7f4b;--warn:#b54708;--bad:#b42318;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171d;--card:#1d222b;--tx:#e8ebf0;--mut:#9aa3b2;--bd:#363d4a;--ac:#6ea3f5;--ok:#4cc38a;--warn:#f0a04b;--bad:#f2766b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14171d;--card:#1d222b;--tx:#e8ebf0;--mut:#9aa3b2;--bd:#363d4a;--ac:#6ea3f5;--ok:#4cc38a;--warn:#f0a04b;--bad:#f2766b;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:4px 0 12px}h2{font-size:15px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select,textarea{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:7px;padding:8px}
+textarea{min-height:64px;resize:vertical}
+button{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:9px 14px;cursor:pointer}
+button.p{background:var(--ac);border-color:var(--ac);color:#fff}button.d{color:var(--bad)}
+.bar{height:14px;background:var(--bg);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);width:0}
+.pct{font-size:28px;font-weight:700}.stats{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:13px;margin-top:6px}
+.item{border-left:4px solid var(--bd)}.item.s-done{border-left-color:var(--ok)}.item.s-out{border-left-color:var(--bad)}.item.s-tbc{border-left-color:var(--warn)}
+.ih{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:600}
+.ph img{max-width:100%;max-height:200px;border-radius:7px;display:block;margin-top:6px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:0 0 auto}
+.msg{font-size:13px;color:var(--mut);margin-top:8px}.cd{padding:9px 11px;border-radius:8px;border:1px solid var(--bd);font-size:14px}.cd.ok{border-color:var(--ok)}.cd.warn{border-color:var(--warn)}.cd.bad{border-color:var(--bad)}ul.rec{margin:8px 0 0;padding-left:20px;font-size:13px}ul.rec li{margin-bottom:4px}
+</style></head><body><div class="wrap">
+<h1>Deficiency List Report</h1>
+<div class="card"><h2>Project details</h2><div class="grid" id="pd"></div></div>
+<div class="card"><h2>Completion summary</h2>
+<div class="pct" id="pct">0%</div><div class="bar"><i id="fill"></i></div><div class="stats" id="stats"></div><div id="cd" style="margin-top:12px"></div></div>
+<div id="items"></div>
+<div class="row"><button class="p" id="add">+ Add deficiency item</button><button id="pdf">Save to PDF</button><button id="mail">Send to email</button><button class="d" id="clr">Clear all</button></div>
+<div class="msg" id="msg"></div>
+</div>
+<script>
+const PD=[["name","Project name"],["no","Project number"],["loc","Location / site"],["contractor","Contractor"],["inspector","Inspected by"],["date","Report date","date"],["start","Start date","date"],["end","Latest completion date approved","date"],["email","Send report to (email)","email"]];
+const AREAS=["Prevalent (throughout)","Interior","Exterior","Roof","Foundation / structure","Parking / paving","Mechanical room","Electrical room","Landscaping"];
+const STAT=["Outstanding","TBC","Not reviewed","Work completed"];
+const OW="Write your own…";
+let S={pd:{},items:[]};
+try{const r=localStorage.getItem("dlr");if(r)S=JSON.parse(r)}catch(e){}
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem("dlr",JSON.stringify(S))}catch(e){}};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const val=(v,c)=>v===OW?(c||""):(v||"");
+const isDone=i=>i.status==="Work completed";
+const today=()=>new Date().toISOString().slice(0,10);
+function pd(){$("pd").innerHTML=PD.map(([k,l,t])=>`<div><label>${l}</label><input type="${t||"text"}" data-k="${k}" value="${esc(S.pd[k]||(k==="date"?today():""))}"></div>`).join("");
+ if(!S.pd.date)S.pd.date=today();
+ $("pd").oninput=e=>{S.pd[e.target.dataset.k]=e.target.value;save();stats()}}
+function opts(list,cur){return list.concat([OW]).map(o=>`<option${o===cur?" selected":""}>${esc(o)}</option>`).join("")}
+function stats(){const n=S.items.length,d=S.items.filter(isDone).length,p=n?Math.round(d/n*100):0;
+ $("pct").textContent=p+"% complete";$("fill").style.width=p+"%";
+ const c=s=>S.items.filter(i=>val(i.status,i.statusC)===s).length;
+ $("stats").innerHTML=`<span>Total: ${n}</span><span>Completed: ${d}</span><span>Outstanding: ${c("Outstanding")}</span><span>TBC: ${c("TBC")}</span><span>Not reviewed: ${c("Not reviewed")}</span>`;countdown(n,d,p,c);return{n,d,p}}
+let CD="";
+function countdown(n,d,p,c){
+ const el=$("cd"),e=S.pd.end,s=S.pd.start;
+ if(!e){CD="";el.innerHTML='<div class="cd">Enter the latest approved completion date in Project details to see the countdown and recommendations.</div>';return}
+ const pr=v=>{const a=v.split("-");return new Date(+a[0],+a[1]-1,+a[2])},t=new Date();t.setHours(0,0,0,0);
+ const days=Math.round((pr(e)-t)/864e5),rem=n-d,out=c("Outstanding"),tbc=c("TBC"),nr=c("Not reviewed"),wk=Math.max(1,Math.ceil(Math.max(days,0)/7));
+ const head=days>0?`${days} day${days>1?"s":""} left until approved completion (${esc(e)})`:days===0?`Approved completion date is today (${esc(e)})`:`${-days} day${days<-1?"s":""} past approved completion date (${esc(e)})`;
+ const cl=days<0&&rem>0?"bad":days<=7&&rem>0?"warn":"ok",R=[];
+ if(!n)R.push("No deficiency items logged yet.");
+ else if(!rem)R.push(`All ${n} items are completed. Arrange the final review and sign-off.`);
+ else{
+  if(days<0)R.push(`The approved date has passed with ${rem} item(s) still open. Request an extension or agree a revised schedule with the contractor, and close the outstanding items first.`);
+  else R.push(`Pace needed: about ${Math.ceil(rem/wk)} item(s) per week to close the ${rem} remaining item(s) in ${days} day(s).`);
+  if(s&&pr(e)>pr(s)){const el2=Math.max(0,Math.min(100,Math.round((t-pr(s))/(pr(e)-pr(s))*100)));
+   R.push(p<el2-10?`Behind schedule: ${el2}% of the time has passed but only ${p}% of items are completed. Escalate with the contractor and ask for added crew or a recovery plan.`:`On track: ${el2}% of the time has passed and ${p}% of items are completed.`)}
+  if(nr)R.push(`Review the ${nr} unreviewed item(s) first so nothing is missed.`);
+  if(tbc)R.push(`Resolve the ${tbc} TBC item(s): confirm with the consultant or owner whether they are deficiencies.`);
+  if(out)R.push(`Schedule the ${out} outstanding item(s) with the contractor, set a target date for each and re-inspect once done.`);
+  if(days>=0&&days<=7)R.push("Less than a week left: hold a daily check-in and book the re-inspection now.")}
+ CD=(days>=0?`${days} day(s) left`:`${-days} day(s) overdue`)+` to approved completion, ${rem} item(s) remaining`;
+ el.innerHTML=`<div class="cd ${cl}"><b>${head}</b><br>${rem} of ${n} item(s) remaining</div><ul class="rec">${R.map(r=>`<li>${r}</li>`).join("")}</ul>`}
+function cls(i){return i.status==="Work completed"?"s-done":i.status==="Outstanding"?"s-out":i.status==="TBC"?"s-tbc":""}
+function render(){
+ renum();
+ $("items").innerHTML=S.items.map((it,x)=>`<div class="card item ${cls(it)}" data-x="${x}">
+ <div class="ih"><span>Item ${it.no}</span><button class="d" data-a="del">Delete</button></div>
+ <div class="grid">
+ <div><label>Subject</label><input data-f="subject" value="${esc(it.subject)}"></div>
+ <div><label>Date noted</label><input type="date" data-f="date" value="${esc(it.date)}"></div>
+ <div><label>Site visit identified</label><input data-f="visit" placeholder="e.g. Site visit #3" value="${esc(it.visit)}"></div>
+ <div><label>Site area</label><select data-f="area">${opts(AREAS,it.area)}</select>${it.area===OW?`<input data-f="areaC" placeholder="Your own area" value="${esc(it.areaC)}" style="margin-top:6px">`:""}</div>
+ <div><label>Status</label><select data-f="status">${opts(STAT,it.status)}</select>${it.status===OW?`<input data-f="statusC" placeholder="Your own status" value="${esc(it.statusC)}" style="margin-top:6px">`:""}</div>
+ </div>
+ <div style="margin-top:10px"><label>Description / potential deficient work</label><textarea data-f="desc">${esc(it.desc)}</textarea></div>
+ <div style="margin-top:10px" class="ph"><label>Photo</label><input type="file" accept="image/*" data-a="photo">${it.photo?`<img src="${it.photo}" alt="Deficiency photo"><button data-a="rmp" style="margin-top:6px">Remove photo</button>`:""}</div>
+ <div style="margin-top:10px"><label>Comments</label><textarea data-f="comments">${esc(it.comments)}</textarea></div></div>`).join("");stats()}
+function renum(){S.items.forEach((it,i)=>it.no=i+1)}
+$("add").onclick=()=>{S.items.push({subject:"",date:today(),visit:"",area:AREAS[0],areaC:"",desc:"",photo:"",status:"Outstanding",statusC:"",comments:""});save();render();window.scrollTo(0,document.body.scrollHeight)};
+$("items").oninput=e=>{const c=e.target.closest(".item");if(!c||!e.target.dataset.f)return;const it=S.items[c.dataset.x],f=e.target.dataset.f;it[f]=e.target.value;save();
+ if(f==="area"||f==="status")render();else if(f==="status")stats()};
+$("items").onchange=e=>{if(e.target.dataset.a!=="photo")return;const it=S.items[e.target.closest(".item").dataset.x],file=e.target.files[0];if(!file)return;
+ const img=new Image,u=URL.createObjectURL(file);img.onload=()=>{const m=900,r=Math.min(1,m/Math.max(img.width,img.height)),cv=document.createElement("canvas");cv.width=img.width*r;cv.height=img.height*r;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);it.photo=cv.toDataURL("image/jpeg",.7);URL.revokeObjectURL(u);save();render()};img.src=u};
+$("items").onclick=e=>{const a=e.target.dataset.a;if(!a)return;const it=S.items[e.target.closest(".item").dataset.x];
+ if(a==="del"&&confirm("Delete this item?")){S.items.splice(S.items.indexOf(it),1);save();render()}
+ if(a==="rmp"){it.photo="";save();render()}};
+$("clr").onclick=()=>{if(confirm("Clear all items and project details?")){S={pd:{},items:[]};save();pd();render()}};
+function build(){
+ const D=new jspdf.jsPDF({orientation:"landscape",unit:"pt",format:"letter"}),st=stats(),P=S.pd;
+ D.setFontSize(16);D.text("Deficiency List Report",36,40);D.setFontSize(10);
+ const L=[["Project",P.name],["Project No.",P.no],["Location",P.loc],["Contractor",P.contractor],["Inspected by",P.inspector],["Date",P.date],["Start date",P.start],["Approved completion",P.end]];
+ L.forEach((l,i)=>D.text(`${l[0]}: ${l[1]||"-"}`,36+(i%3)*250,62+Math.floor(i/3)*14));
+ D.text(`Completion: ${st.p}% (${st.d} of ${st.n} items completed)`+(CD?`  |  ${CD}`:""),36,108);
+ D.autoTable({startY:120,styles:{fontSize:8,cellPadding:3,valign:"top"},headStyles:{fillColor:[31,95,191]},
+ head:[["#","Subject","Date noted","Site visit","Site area","Description / potential deficient work","Photo","Status","Comments"]],
+ body:S.items.map(i=>[i.no,i.subject,i.date,i.visit,val(i.area,i.areaC),i.desc,"",val(i.status,i.statusC),i.comments]),
+ columnStyles:{0:{cellWidth:20},2:{cellWidth:50},6:{cellWidth:90}},
+ didParseCell:h=>{if(h.section==="body"&&h.column.index===6&&S.items[h.row.index].photo)h.cell.styles.minCellHeight=70},
+ didDrawCell:h=>{if(h.section==="body"&&h.column.index===6){const p=S.items[h.row.index].photo;if(p)try{D.addImage(p,"JPEG",h.cell.x+3,h.cell.y+3,84,64)}catch(e){}}}});
+ return D}
+const fname=()=>"Deficiency-List-"+((S.pd.no||S.pd.name||"report")+"").replace(/[^\w-]+/g,"_")+"-"+(S.pd.date||today())+".pdf";
+const say=t=>$("msg").textContent=t;
+async function dl(){const blob=build().output("blob");let d=null;try{d=await claude.use("downloads")}catch(e){}
+ if(!d){say("File saving is not available in this view. Open the artifact in claude.ai to save the PDF.");return false}
+ try{await d.save({filename:fname(),data:blob});say("PDF ready: "+fname());return true}catch(e){say(e&&e.code==="declined"?"Save cancelled.":"Could not save the PDF ("+(e&&e.code||"error")+").");return false}}
+$("pdf").onclick=dl;
+$("mail").onclick=async()=>{const st=stats(),P=S.pd;
+ if(!P.email){say("Enter the email address in Project details first.");return}
+ const ok=await dl();if(!ok)return;
+ const body=`Deficiency List Report\nProject: ${P.name||"-"} (${P.no||"-"})\nLocation: ${P.loc||"-"}\nDate: ${P.date||"-"}\nCompletion: ${st.p}% (${st.d} of ${st.n} items completed)\n\nPlease see the attached PDF (${fname()}).`;
+ const a=document.createElement("a");a.href="mailto:"+encodeURIComponent(P.email)+"?subject="+encodeURIComponent("Deficiency List Report - "+(P.name||""))+"&body="+encodeURIComponent(body);a.target="_blank";document.body.appendChild(a);a.click();a.remove();
+ say("Your email app should open. Attach the PDF you just saved before sending.")};
+pd();render();
+</script></body></html>
